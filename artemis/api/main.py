@@ -95,6 +95,9 @@ def metrics() -> Metrics:
 
 @app.post("/reset")
 def reset() -> dict[str, str]:
+    global ledger
     services.cases.reset()
-    ledger.append(None, "BATCH_COMPLETED", "system", {"action": "reset"})
+    # A demo reset restores the same clean seed state, including its audit history.
+    ledger = AuditLedger()
+    ledger.append(None, "BATCH_STARTED", "system", {"action": "reset", "mode": "fixture"})
     return {"status": "reset"}

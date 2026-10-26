@@ -23,3 +23,13 @@ def test_controller_can_approve_verified_case() -> None:
     assert response.status_code == 200
     assert response.json()["case"]["state"] == "APPLIED"
     assert client.get("/audit/verify").json()["ok"]
+
+
+def test_reset_restores_clean_cases_and_a_fresh_audit_chain() -> None:
+    client.post("/cases/CASE-0007/review", headers={"X-Reviewer-Id": "controller"}, json={"decision": "approve"})
+    client.post("/reset")
+    assert client.get("/cases/CASE-0007").json()["state"] == "PENDING_APPROVAL"
+    events = client.get("/audit").json()
+    assert len(events) == 1
+    assert events[0]["seq"] == 1
+    assert client.get("/audit/verify").json()["ok"]
