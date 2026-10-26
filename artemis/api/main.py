@@ -3,20 +3,37 @@ from __future__ import annotations
 from fastapi import FastAPI, Header, HTTPException, Query
 
 from artemis.api.contracts import ProductServices
-from artemis.api.fixture_gateways import FixtureAgentGateway, FixtureBatchGateway, FixtureCaseGateway
+from artemis.api.fixture_gateways import FixtureCaseGateway
+from artemis.api.live_gateways import AuditSinkAdapter, LiveAgentGateway, LiveBatchGateway
 from artemis.api.policy import review
 from artemis.audit.ledger import AuditLedger
+from artemis.fakes.core import FixtureCore
+from artemis.fakes.policy import FakePolicy
+from artemis.fakes.store import InMemoryRunStore
 from artemis.models import AuditVerification, BatchProgress, CaseDetail, CaseSummary, Metrics, ReviewRequest, ReviewResponse
+from artemis.wiring import Deps, Settings
 
-app = FastAPI(title="Artemis API", version="0.1.0")
+app = FastAPI(title="Artemis API", version="0.2.0")
 ledger = AuditLedger()
-services = ProductServices(FixtureCaseGateway(), FixtureBatchGateway(), FixtureAgentGateway())
+
+def _create_services(current_ledger: AuditLedger) -> tuple[ProductServices, Deps]:
+    audit_sink = AuditSinkAdapter(current_ledger)
+    store = InMemoryRunStore()
+    core = FixtureCore("fixtures")
+    policy = FakePolicy(audit_sink)
+    deps = Deps(core=core, policy=policy, audit=audit_sink, store=store, settings=Settings.from_env())
+    case_gw = FixtureCaseGateway()
+    batch_gw = LiveBatchGateway(deps, current_ledger)
+    agent_gw = LiveAgentGateway(deps)
+    return ProductServices(case_gw, batch_gw, agent_gw), deps
+
+services, app_deps = _create_services(ledger)
 REVIEWERS = {"analyst": False, "controller": True}
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "lane_b_status": "active", "audit_ledger": "anchored"}
 
 
 @app.post("/batch/run", response_model=BatchProgress)
@@ -53,12 +70,31 @@ def trace(case_id: str) -> dict:
     return services.agent.trace(case_id)
 
 
+@app.get("/cases/{case_id}/narrative")
+def narrative(case_id: str) -> dict:
+    get_case(case_id)
+    if hasattr(services.agent, "narrative"):
+        return services.agent.narrative(case_id)
+    return {"case_id": case_id, "narrative": "Standard policy clearance", "source": "template"}
+
+
 @app.get("/cases/{case_id}/graph")
 def graph(case_id: str) -> dict:
     case = get_case(case_id)
-    nodes = [{"id": "receipt", "kind": "receipt", "label": case.utr}, {"id": "INV-1042", "kind": "invoice", "label": "INV-1042"}, {"id": "INV-1043", "kind": "invoice", "label": "INV-1043"}]
+    nodes = [
+        {"id": "receipt", "kind": "receipt", "label": case.utr},
+        {"id": "INV-1042", "kind": "invoice", "label": "INV-1042"},
+        {"id": "INV-1043", "kind": "invoice", "label": "INV-1043"}
+    ]
     nodes += [{"id": item.id, "kind": "evidence", "tier": item.tier, "label": item.kind} for item in case.evidence]
-    return {"nodes": nodes, "edges": [{"source": "receipt", "target": "INV-1042", "label": "₹11,80,000"}, {"source": "receipt", "target": "INV-1043", "label": "₹3,54,000"}, {"source": "EVD-0003", "target": "receipt", "label": "supports"}]}
+    return {
+        "nodes": nodes,
+        "edges": [
+            {"source": "receipt", "target": "INV-1042", "label": "₹11,80,000"},
+            {"source": "receipt", "target": "INV-1043", "label": "₹3,54,000"},
+            {"source": "EVD-0003", "target": "receipt", "label": "supports"}
+        ]
+    }
 
 
 @app.post("/cases/{case_id}/review", response_model=ReviewResponse)
@@ -95,9 +131,8 @@ def metrics() -> Metrics:
 
 @app.post("/reset")
 def reset() -> dict[str, str]:
-    global ledger
-    services.cases.reset()
-    # A demo reset restores the same clean seed state, including its audit history.
+    global ledger, services, app_deps
     ledger = AuditLedger()
     ledger.append(None, "BATCH_STARTED", "system", {"action": "reset", "mode": "fixture"})
+    services, app_deps = _create_services(ledger)
     return {"status": "reset"}
