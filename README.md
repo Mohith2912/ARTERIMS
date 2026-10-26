@@ -20,7 +20,7 @@ Open `http://127.0.0.1:8000/docs` for the API. The React dashboard lives in `web
 - `GET /audit/verify` validates the complete event chain.
 - `py -3 scripts/tamper.py` demonstrates that a changed historical payload is detected.
 
-For containers, copy `.env.example` to `.env` and run `docker compose -f deploy/docker-compose.yml up --build`.
+For containers, run `docker compose -f deploy/docker-compose.yml up --build`. The fixture demo reads safe defaults from `.env.example`; create `.env` only to override a value locally.
 
 ## Hosted dashboard
 

@@ -4,7 +4,12 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.api
     ports: ["8000:8000"]
-    env_file: ../.env
+    # Safe defaults support a fresh-clone fixture demo; .env may override locally.
+    env_file:
+      - path: ../.env.example
+        required: true
+      - path: ../.env
+        required: false
   web:
     image: node:22-alpine
     working_dir: /app
