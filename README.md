@@ -20,6 +20,11 @@ Open `http://127.0.0.1:8000/docs` for the API. The React dashboard lives in `web
 
 For containers, copy `.env.example` to `.env` and run `docker compose -f deploy/docker-compose.yml up --build`.
 
+## Hosted dashboard
+
+The GitHub Pages workflow publishes the fixture-backed dashboard at
+`https://mohith2912.github.io/ARTERIMS/` after GitHub Pages is enabled in the repository's **Settings → Pages → Source: GitHub Actions**. This public demo intentionally contains no API credentials or customer data.
+
 ## Product guarantees
 
 - Review decisions are attributable to a named reviewer.
